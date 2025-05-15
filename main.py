@@ -92,7 +92,8 @@ def RunExp(args, dataset, data, Net, percls_trn, val_lb):
                     val_loss_history[-(args.early_stopping + 1):-1]) 
                 if val_loss > tmp.mean().item():   
                     break
-        return test_acc, best_val_acc, beta
+    
+    return test_acc, best_val_acc, beta
 
 
 
@@ -128,6 +129,8 @@ if __name__ == '__main__':
         Results0.append([test_acc, best_val_acc])  
         Result_test.append(test_acc)
         Result_val.append(best_val_acc)
+        print(f'test_acc:{test_acc:.4f}, best_val_acc:{best_val_acc:.4f}\n')
+    
         
     test_acc_mean, val_acc_mean = np.mean(Results0, axis=0) * 100 
     test_acc_std = np.sqrt(np.var(Results0, axis=0)[0]) * 100 

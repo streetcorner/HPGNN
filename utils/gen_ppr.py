@@ -40,16 +40,16 @@ def _power_push_sor(adj_matrix,indptr,indices,degree,clique,cliqueNum,s,eps,alph
         eps_vec = r_max * degree[i]   
 
         num_oper = 0. 
-        threshold = step  
-        l1_error = [] 
+        l1_error = []  
         num_oper_list = []  
         step = 1e5 
+        threshold = step
        
         
         while front != rear and ((rear - front) <= switch_size): 
             front = (front + 1) % (queue_size) 
             u = queue[front] 
-            if not( (i>1) & (u>=n))
+            if not( (i>1) & (u>=n)):
                 q_mark[u] = False  
             if np.abs(res[u]) > eps_vec[u]: 
                 residual = omega * alpha * res[u]  
@@ -91,14 +91,18 @@ def _power_push_sor(adj_matrix,indptr,indices,degree,clique,cliqueNum,s,eps,alph
                             rear = (rear + 1) % queue_size
                             queue[rear] = v
                             q_mark[v] = True  
+        jump = False
         if r_sum <= eps_cur: 
             jump = True  
             
         num_epoch = 8 
+        
         r_max_prime1 = np.power(eps_cur, 2 / num_epoch)   
         r_max_prime2 = np.power(eps_cur, 2 / num_epoch) / sum(degree[i])
+        
         if not jump:
             for epoch in np.arange(1, num_epoch + 1):
+                
                 while r_sum > r_max_prime1: 
                     for u in range(queue_size): 
                         if(r_sum <= r_max_prime1): 

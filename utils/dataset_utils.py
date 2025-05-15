@@ -177,9 +177,6 @@ class WebKB(InMemoryDataset):
 
 
 def graphLoader(name):
-    # root_path  = osp.join('../', 'data') #当前是在src,去到HPGNN
-    # root_path  = osp.join('HPGNN/', 'data')
-    # 确定数据根路径
     project_root = osp.abspath(osp.join(osp.dirname(__file__), "../.."))
     root_path = osp.join(project_root, "HPGNN/data")
 
@@ -187,10 +184,8 @@ def graphLoader(name):
     if name in ['cora', 'citeseer', 'pubmed']:
         path = osp.join(root_path, name)
         print("download path=",path)
-        #加载 Cora 数据集，并将其存储在路径path中
-        dataset = Planetoid(path, name=name) #使用 Planetoid 数据集加载函数来加载常见图数据集, PyTorch Geometric (PyG) 中常用的数据集之一,专门用于图神经网络（GNN）的研究。
-        #节点数：data.num_nodes，边数：data.num_edges，点特征维度：data.x.shape[1]，节点标签数目：data.y.max().item() + 1
-        data = dataset[0] #Cora 数据集的具体图数据，dataset[0] 是数据集的第一个图数据，通常是一个图对象，包含图的所有信息。
+        dataset = Planetoid(path, name=name) 
+        data = dataset[0] 
     elif name in ['computers', 'photo']:
         path = osp.join(root_path, name)
         dataset = Amazon(path, name, T.NormalizeFeatures())
@@ -222,49 +217,38 @@ def graphLoader(name):
 def cal_ppm(data,ppm_path,args):
     
     print("Preparing parameters for calucating ppr matix...")
-    '''
-    clique方法必须是无向图，但边的处理是有向的
-    因此高阶的三角形以上和低阶的节点边分开处理  
-    高阶用G处理成clique的形式再存，低阶用data直接进行处理。
-    '''
     order=args.Order
     row, col,temp, adj_matrix_csr, data_values,clique = {},{},{},{},{},{}
-    cliqueNum =[0] * (args.Order + 1)  # 数组 记录各阶团的数量，假设args.Order = 3，cliqueNum = [0 0 0 0]
+    cliqueNum =[0] * (args.Order + 1) 
     for i in range(1, args.Order + 1): 
         row[i], col[i] ,clique[i] = [], [], []
         temp[i] = np.ones(i + 1, dtype=np.int) 
-        # _D[i] = np.zeros(data.num_nodes) #记录每阶内每个节点连接的单纯形的度数
-
-    row[1] = data.edge_index[0].numpy()  # 边的起点
-    col[1] = data.edge_index[1].numpy()  # 边的终点
+    row[1] = data.edge_index[0].numpy() 
+    col[1] = data.edge_index[1].numpy()  
     edges = list(zip(row[1], col[1]))
     cliqueNum[0]=data.num_nodes
     cliqueNum[1]=len(edges)
     
-    #如果是高阶的情况，用clique处理，存储三角形以以上结构的信息
     if(order > 1): 
         G = nx.Graph()
-        G.add_nodes_from(range(data.num_nodes)) # 添加节点
-        G.add_edges_from(data.edge_index.numpy().transpose()) # 添加边
-        #获取团的迭代器
+        G.add_nodes_from(range(data.num_nodes))
+        G.add_edges_from(data.edge_index.numpy().transpose())
         itClique = nx.enumerate_all_cliques(G)
         nextClique = next(itClique) 
-        while len(nextClique) <= 2: #略过节点和边
-            nextClique = next(itClique)# 获取第1个三角形，三角形的len=3
+        while len(nextClique) <= 2: 
+            nextClique = next(itClique)
       
-        # 从边开始，寻找每一阶的高阶结构并存储， 对于每个团，更新其对应的行索引 _row、列索引 _col 和度数信息 D。
         while len(nextClique) <= (order + 1):
             tmp_order = len(nextClique) - 1 
-            clique[tmp_order].append(nextClique) #只存高阶的单纯形
-            row[tmp_order].extend(nextClique)   # 更新当前团的行和列,行是每一阶内的所有团的节点
-            col[tmp_order].extend(cliqueNum[tmp_order] * temp[tmp_order]) #列是如果这阶没有，就是[0 0 0]；如果这2阶已经有2个团，那么就是 [2 2 2]  
-            cliqueNum[tmp_order] += 1  # 更新当前阶中团的数量
+            clique[tmp_order].append(nextClique) 
+            row[tmp_order].extend(nextClique)   
+            col[tmp_order].extend(cliqueNum[tmp_order] * temp[tmp_order]) 
+            cliqueNum[tmp_order] += 1  
             try:
                 nextClique = next(itClique)
             except StopIteration:
                 break
     '''
-    获取边信息，edge_index 是一个 Tensor
     edge_index = tensor([[0, 1, 2],
                 [1, 2, 0]])
     '''
@@ -272,7 +256,7 @@ def cal_ppm(data,ppm_path,args):
         data_values[i] = np.ones(len(row[i]))
         if(i==1):
             adj_matrix_csr[i] = csr_matrix((data_values[i], (row[i], col[i])), shape=(cliqueNum[0], cliqueNum[0]))
-        else: #>1的情况
+        else: 
             adj_matrix_csr[i] = csr_matrix((data_values[i], (row[i], col[i])), shape=(cliqueNum[0], cliqueNum[i]))
     print("--------------------------------------------------------------")
     print("Calucating ppr matix...")
@@ -290,22 +274,20 @@ def cal_ppm(data,ppm_path,args):
         all_nonzero_values[i],all_col_indices[i],all_row_indices[i]=[],[],[]
 
 
-    #对每一个节点计算PPR
     for node in tqdm(range(cliqueNum[0])):
-        #计算每个节点的ppr
         ppr=power_push_sor(adj_matrix_csr,clique,cliqueNum, node,eps,alpha, maxCliqueSize=order)
         
         '''
         #[7.36932797e-05 4.10629632e-05 8.97597657e-05 ... 3.00001000e+05 3.25436000e+05 4.00000000e+00]
         '''
     
-        for i in range( 1,  order+1 ): #每一个节点的，每一阶内，单独处理
-            if(sum(ppr[i])==0): #如果没有值，忽略
+        for i in range( 1,  order+1 ): 
+            if(sum(ppr[i])==0): 
                 break
             ppr[i]=torch.tensor(ppr[i], dtype=torch.float64)
             col_indices = torch.nonzero(ppr[i] > 0).squeeze() 
-            nonzero_values = ppr[i][col_indices]  # 对应的非零值
-            row_indices = torch.full_like(col_indices, node)  # 所有行索引都是当前节点 
+            nonzero_values = ppr[i][col_indices]  
+            row_indices = torch.full_like(col_indices, node)   
             if nonzero_values.dim()==0:
                 nonzero_values=nonzero_values.unsqueeze(0)
             if col_indices.dim()==0:
@@ -314,25 +296,24 @@ def cal_ppm(data,ppm_path,args):
                 row_indices=row_indices.unsqueeze(0)
 
             all_nonzero_values[i].append(nonzero_values) #all_nonzero_indices=[tensor([   0,    1,  ..., 2707]), tensor([   0,    1,   ...,  2707])]
-            all_col_indices[i].append(col_indices)  # 列索引是非零索引
-            all_row_indices[i].append(row_indices)  # 行索引是当前节点的索引
+            all_col_indices[i].append(col_indices)  
+            all_row_indices[i].append(row_indices)  
     PPM={} 
     for i in range( 1,  order + 1 ):
-        # 将所有的索引合并成一个大张量
         if not all_nonzero_values[i]: 
             print(f"Warning: No nonzero values for order {i}")
-            continue  # 跳过空列表，或者用默认值填充
+            continue  
         cur_all_nonzero_values = torch.cat(all_nonzero_values[i])  
-        cur_all_col_indices = torch.cat(all_col_indices[i])  # 合并所有节点的列索引
-        cur_all_row_indices = torch.cat(all_row_indices[i])  # 合并所有节点的行索引
-        # 创建稀疏张量索引
+        cur_all_col_indices = torch.cat(all_col_indices[i])  
+        cur_all_row_indices = torch.cat(all_row_indices[i])  
+        
         cur_coo_indices = torch.stack([cur_all_row_indices, cur_all_col_indices], dim=0)    
         size = torch.Size([cliqueNum[0],cliqueNum[0]])  
         ppm_coo = torch.sparse_coo_tensor(cur_coo_indices, cur_all_nonzero_values, size)
         PPM[i] = SparseTensor.from_torch_sparse_coo_tensor(ppm_coo)
-    data.PPM=PPM #PPM换L
+    data.PPM=PPM 
     
-    torch.save(data.PPM, ppm_path) # 保存到指定路径
+    torch.save(data.PPM, ppm_path) 
     '''
     data.PPM={1: SparseTensor(row=tensor([2707, 2707, 2707,  ..., 2707, 2707, 2707]),
              col=tensor([   0,    1,    2,  ..., 2702, 2706, 2707]),
@@ -353,9 +334,9 @@ def DataLoader(name, args):
         - data: 数据集中的图数据，包含节点特征、边、标签等信息。
     """
    
-    ppm_path = osp.join('..', 'data', name + '/PPM_' + name + '.pt') # 存储ppm的路径
+    ppm_path = osp.join('data', name + '/PPM_' + name + '.pt') 
 
-    #常用数据集
+    
     if name in ['cora', 'citeseer', 'pubmed', 'computers', 'photo', 'chameleon', 'squirrel', 'film', 'texas', 'cornell', 'wisconsin']:
         data, dataset = graphLoader(name)
         print(f"{name} inn")
@@ -363,8 +344,6 @@ def DataLoader(name, args):
         print(f"Texas_null in")
         """
         Texas_null is a null model to test different effect of higher-order structures
-        Texas_null 是一个空模型数据集，用于测试高阶结构对模型的不同影响
-
         """
         name = 'Texas'
         path = '../data/nullModel_Texas/'
@@ -387,8 +366,7 @@ def DataLoader(name, args):
             graph_edge_list.append([int(line[0].split(' ')[1]), int(line[0].split(' ')[0])])
 
         data.edge_index = torch.tensor(graph_edge_list).H
-        print("当前路径:", os.getcwd())
-        ppm_path = osp.join('..', 'data', 'nullModel_' + name, name + '_1_generate' + change + '_PPM.pt')# 存储ppm的路径
+        # print("当前路径:", os.getcwd())
         print(" ppm_path:", ppm_path)
     else:
         raise ValueError(f'dataset {name} not supported in dataloader')
@@ -410,12 +388,12 @@ def DataLoader(name, args):
         if osp.exists(ppm_path):
             print("当前路径:", os.getcwd())
             print(" ppm_path:", ppm_path)
-            data.PPM = torch.load(ppm_path) #如果存在，直接调出来 
-            if len(data.PPM) < args.Order: #调出来阶数不够，再算一下
+            data.PPM = torch.load(ppm_path)  
+            if len(data.PPM) < args.Order: 
                 print("阶数不够，重新计算")
                 cal_ppm(data,ppm_path,args)
         else: 
-            cal_ppm(data,ppm_path,args) #如果不存在，也再算一下,存入data.PPM
+            cal_ppm(data,ppm_path,args)
 
         print(F"{data.PPM}")
     print(f"load data {name} finished")
